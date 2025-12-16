@@ -15,15 +15,59 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
     <style>
-        body { font-family: Arial, sans-serif; background: #f4f6f8; padding: 40px; }
+        body {
+            font-family: Arial, sans-serif;
+            background: #f4f6f8;
+            padding: 40px;
+        }
         h1, h2 { text-align: center; }
-        .container { max-width: 1000px; margin: auto; background: white; padding: 30px; border-radius: 10px; box-shadow: 0 4px 12px rgba(0,0,0,.1); }
+
+        .container {
+            max-width: 1000px;
+            margin: auto;
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 4px 12px rgba(0,0,0,.1);
+        }
+
         .block { margin-bottom: 25px; }
-        textarea { width: 100%; height: 90px; padding: 10px; }
-        button { background: #007bff; color: white; padding: 10px 18px; border: none; border-radius: 5px; cursor: pointer; margin-right: 10px; }
-        .results { display: flex; justify-content: space-around; margin-top: 30px; }
-        .card { background: #f1f3f5; padding: 20px; border-radius: 8px; width: 22%; text-align: center; }
-        canvas { max-width: 400px; margin: 30px auto; display: block; }
+
+        textarea {
+            width: 100%;
+            height: 90px;
+            padding: 10px;
+        }
+
+        button {
+            background: #007bff;
+            color: white;
+            padding: 10px 18px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            margin-right: 10px;
+        }
+
+        .results {
+            display: flex;
+            justify-content: space-around;
+            margin-top: 30px;
+        }
+
+        .card {
+            background: #f1f3f5;
+            padding: 20px;
+            border-radius: 8px;
+            width: 22%;
+            text-align: center;
+        }
+
+        canvas {
+            max-width: 400px;
+            margin: 30px auto;
+            display: block;
+        }
     </style>
 </head>
 <body>
@@ -74,10 +118,159 @@
 ========================= */
 let keywords = {
     pour: [],
-    conditional: ["a condition", "sous condition", "mais", "si"],
+    conditional: ["à condition", "sous condition", "mais", "si"],
     contre: []
 };
 
 /* =========================
    LOAD keyword.json
 ========================= */
+async function loadKeywords() {
+    try {
+        const res = await fetch("keyword.json", { cache: "no-store" });
+        if (!res.ok) throw new Error("keyword.json introuvable");
+        const json = await res.json();
+
+        if (!Array.isArray(json.pour)) json.pour = [];
+        if (!Array.isArray(json.contre)) json.contre = [];
+
+        keywords.pour = json.pour;
+        keywords.contre = json.contre;
+
+        syncTextareas();
+        localStorage.setItem("keywords", JSON.stringify(keywords));
+        console.info("keyword.json chargé:", keywords);
+    } catch (err) {
+        console.warn("Impossible de charger keyword.json:", err);
+        const saved = localStorage.getItem("keywords");
+        if (saved) {
+            keywords = JSON.parse(saved);
+            syncTextareas();
+        } else {
+            console.warn("Aucun keyword.json trouvé, mots-clés vides");
+            syncTextareas();
+        }
+    }
+}
+
+/* =========================
+   UI SYNC
+========================= */
+function syncTextareas() {
+    document.getElementById("pourKeywords").value = keywords.pour.join("\n");
+    document.getElementById("conditionalKeywords").value = keywords.conditional.join("\n");
+    document.getElementById("contreKeywords").value = keywords.contre.join("\n");
+}
+
+/* =========================
+   UTILS
+========================= */
+function normalizeText(text) {
+    return text
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .replace(/[’‘`]/g, "'")
+        .replace(/[^\w\s'-]/g, "")
+        .toLowerCase();
+}
+
+/* =========================
+   PDF EXTRACTION
+========================= */
+async function extractTextFromPDF(file) {
+    const buffer = await file.arrayBuffer();
+    const pdf = await pdfjsLib.getDocument({ data: buffer }).promise;
+    let text = "";
+
+    for (let i = 1; i <= pdf.numPages; i++) {
+        const page = await pdf.getPage(i);
+        const content = await page.getTextContent();
+        content.items.forEach(item => text += item.str + " ");
+    }
+
+    pdf.cleanup();
+    pdf.destroy();
+    return normalizeText(text);
+}
+
+/* =========================
+   SCORING & CLASSIFICATION
+========================= */
+function score(text, list) {
+    let s = 0;
+    list.forEach(k => {
+        const r = new RegExp(`\\b${normalizeText(k)}\\b`, "g");
+        const m = text.match(r);
+        if (m) s += m.length;
+    });
+    return s;
+}
+
+function classify(text) {
+    const p = score(text, keywords.pour);
+    const c = score(text, keywords.conditional);
+    const n = score(text, keywords.contre);
+
+    if (n > 0 && n >= p) return "contre";
+    if (p > 0 && c > 0) return "conditional";
+    if (p > 0) return "pour";
+    return "neutre";
+}
+
+/* =========================
+   ANALYSE
+========================= */
+let chartInstance = null;
+
+async function analyze() {
+    const file = document.getElementById("pdfInput").files[0];
+    if (!file) return alert("Sélectionne un PDF");
+
+    // synchro UI -> state
+    keywords.pour = document.getElementById("pourKeywords").value.split("\n").filter(Boolean);
+    keywords.conditional = document.getElementById("conditionalKeywords").value.split("\n").filter(Boolean);
+    keywords.contre = document.getElementById("contreKeywords").value.split("\n").filter(Boolean);
+    localStorage.setItem("keywords", JSON.stringify(keywords));
+
+    const text = await extractTextFromPDF(file);
+    const opinions = text.split(/[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/);
+
+    let r = { pour: 0, conditional: 0, contre: 0, neutre: 0 };
+    opinions.forEach(o => {
+        if (o.trim().length > 10) r[classify(o)]++;
+    });
+
+    const total = Object.values(r).reduce((a,b)=>a+b,0);
+    document.getElementById("count").innerText = total;
+
+    document.getElementById("pourResult").innerText = ((r.pour/total)*100).toFixed(1)+" %";
+    document.getElementById("conditionalResult").innerText = ((r.conditional/total)*100).toFixed(1)+" %";
+    document.getElementById("contreResult").innerText = ((r.contre/total)*100).toFixed(1)+" %";
+    document.getElementById("neutralResult").innerText = ((r.neutre/total)*100).toFixed(1)+" %";
+
+    if (chartInstance) chartInstance.destroy();
+    chartInstance = new Chart(document.getElementById("chart"), {
+        type: "pie",
+        data: {
+            labels: ["POUR", "POUR (conditions)", "CONTRE", "NEUTRE"],
+            datasets: [{ data: [r.pour, r.conditional, r.contre, r.neutre], backgroundColor: ["#28a745","#007bff","#dc3545","#6c757d"] }]
+        }
+    });
+
+    document.getElementById("pdfInput").value = "";
+}
+
+/* =========================
+   RESET
+========================= */
+function resetKeywords() {
+    localStorage.removeItem("keywords");
+    location.reload();
+}
+
+// 🚀 init
+loadKeywords();
+</script>
+
+</body>
+</html>
