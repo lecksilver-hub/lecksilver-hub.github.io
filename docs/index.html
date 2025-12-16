@@ -1,212 +1,48 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-    <meta charset="UTF-8" />
-    <title>Analyseur de sondage PDF</title>
-
-    <!-- PDF.js -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-    <script>
-        pdfjsLib.GlobalWorkerOptions.workerSrc =
-            'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
-    </script>
-
-    <!-- Chart.js version fixe pour éviter l'erreur .map -->
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-
-    <style>
-        body { font-family: Arial, sans-serif; background: #f4f6f8; padding: 40px; }
-        h1, h2 { text-align: center; }
-        .container { max-width: 1000px; margin: auto; background: white; padding: 30px; border-radius: 10px; box-shadow: 0 4px 12px rgba(0,0,0,.1); }
-        .block { margin-bottom: 25px; }
-        textarea { width: 100%; height: 90px; padding: 10px; }
-        button { background: #007bff; color: white; padding: 10px 18px; border: none; border-radius: 5px; cursor: pointer; margin-right: 10px; }
-        .results { display: flex; justify-content: space-around; margin-top: 30px; }
-        .card { background: #f1f3f5; padding: 20px; border-radius: 8px; width: 22%; text-align: center; }
-        canvas { max-width: 400px; margin: 30px auto; display: block; }
-    </style>
+<meta charset="UTF-8">
+<title>Analyse avancée de sondage PDF</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+body{font-family:Arial;background:#f4f6f8;padding:30px}
+.container{max-width:1100px;margin:auto;background:#fff;padding:25px;border-radius:10px}
+textarea{width:100%;height:90px}
+button{padding:10px 16px;background:#007bff;color:#fff;border:0;border-radius:5px;cursor:pointer}
+.results{display:flex;justify-content:space-around;margin-top:25px}
+.card{background:#f1f3f5;padding:15px;border-radius:8px;width:22%;text-align:center}
+canvas{max-width:420px;margin:30px auto}
+</style>
 </head>
 <body>
-
 <div class="container">
-    <h1>Analyse de sondage – Maisons closes</h1>
-
-    <div class="block">
-        <h3>1️⃣ Importer le fichier PDF</h3>
-        <input type="file" id="pdfInput" accept="application/pdf" />
-    </div>
-
-    <div class="block">
-        <h3>2️⃣ Mots-clés POUR</h3>
-        <textarea id="pourKeywords"></textarea>
-    </div>
-
-    <div class="block">
-        <h3>3️⃣ Mots-clés POUR SOUS CONDITIONS</h3>
-        <textarea id="conditionalKeywords"></textarea>
-    </div>
-
-    <div class="block">
-        <h3>4️⃣ Mots-clés CONTRE</h3>
-        <textarea id="contreKeywords"></textarea>
-    </div>
-
-    <div class="block">
-        <button onclick="analyze()">📊 Lancer l’analyse</button>
-        <button onclick="resetKeywords()">🔄 Réinitialiser</button>
-    </div>
-
-    <h2>👥 Personnes analysées : <span id="count">0</span></h2>
-
-    <div class="results">
-        <div class="card"><h3>✅ POUR</h3><p id="pourResult">0 %</p></div>
-        <div class="card"><h3>🟦 POUR (conditions)</h3><p id="conditionalResult">0 %</p></div>
-        <div class="card"><h3>❌ CONTRE</h3><p id="contreResult">0 %</p></div>
-        <div class="card"><h3>⚖️ NEUTRE</h3><p id="neutralResult">0 %</p></div>
-    </div>
-
-    <canvas id="chart"></canvas>
+<h1>Analyse avancée – Maisons closes</h1>
+<input type="file" id="pdfInput" accept="application/pdf"><br><br>
+<h3>Mots-clés POUR</h3><textarea id="pour"></textarea>
+<h3>POUR sous conditions</h3><textarea id="cond"></textarea>
+<h3>CONTRE</h3><textarea id="contre"></textarea><br><br>
+<button onclick="analyze()">Analyser</button>
+<h2>Réponses analysées : <span id="count">0</span></h2>
+<div class="results">
+<div class="card">POUR<br><span id="r_pour">0</span></div>
+<div class="card">CONDITIONNEL<br><span id="r_cond">0</span></div>
+<div class="card">CONTRE<br><span id="r_contre">0</span></div>
+<div class="card">NEUTRE<br><span id="r_neutre">0</span></div>
 </div>
-
+<canvas id="chart"></canvas>
+</div>
 <script>
-/* =========================
-   KEYWORDS STATE
-========================= */
-let keywords = {
-    pour: [],
-    conditional: ["a condition", "sous condition", "mais", "si"],
-    contre: []
-};
-
-/* =========================
-   LOAD keyword.json
-========================= */
-async function loadKeywords() {
-    try {
-        const res = await fetch("keyword.json", { cache: "no-store" });
-        if (!res.ok) throw new Error("keyword.json introuvable");
-        const json = await res.json();
-        if (!json.pour || !json.contre) throw new Error("JSON invalide");
-        keywords.pour = json.pour;
-        keywords.contre = json.contre;
-        syncTextareas();
-        console.info("keyword.json chargé");
-    } catch {
-        console.warn("Aucun keyword.json trouvé, mots-clés vides");
-        syncTextareas();
-    }
-}
-
-/* =========================
-   UI SYNC
-========================= */
-function syncTextareas() {
-    document.getElementById("pourKeywords").value = keywords.pour.join("\n");
-    document.getElementById("conditionalKeywords").value = keywords.conditional.join("\n");
-    document.getElementById("contreKeywords").value = keywords.contre.join("\n");
-}
-
-/* =========================
-   UTILS
-========================= */
-function normalizeText(text) {
-    return text.normalize("NFD")
-        .replace(/[\u0300-\u036f]/g, "")
-        .replace(/[’‘`]/g, "'")
-        .replace(/[^\w\s'-]/g, "")
-        .toLowerCase();
-}
-
-/* =========================
-   PDF EXTRACTION
-========================= */
-async function extractTextFromPDF(file) {
-    const buffer = await file.arrayBuffer();
-    const pdf = await pdfjsLib.getDocument({ data: buffer }).promise;
-    let text = "";
-    for (let i = 1; i <= pdf.numPages; i++) {
-        const page = await pdf.getPage(i);
-        const content = await page.getTextContent();
-        content.items.forEach(item => text += item.str + " ");
-    }
-    pdf.cleanup();
-    pdf.destroy();
-    return normalizeText(text);
-}
-
-/* =========================
-   SCORING & CLASSIFICATION
-========================= */
-function score(text, list) {
-    let s = 0;
-    list.forEach(k => {
-        const r = new RegExp(`\\b${normalizeText(k)}\\b`, "g");
-        const m = text.match(r);
-        if (m) s += m.length;
-    });
-    return s;
-}
-
-function classify(text) {
-    const p = score(text, keywords.pour);
-    const c = score(text, keywords.conditional);
-    const n = score(text, keywords.contre);
-    if (n > 0 && n >= p) return "contre";
-    if (p > 0 && c > 0) return "conditional";
-    if (p > 0) return "pour";
-    return "neutre";
-}
-
-/* =========================
-   ANALYSE
-========================= */
-let chartInstance = null;
-
-async function analyze() {
-    const file = document.getElementById("pdfInput").files[0];
-    if (!file) return alert("Sélectionne un PDF");
-
-    // synchronisation UI -> state
-    keywords.pour = document.getElementById("pourKeywords").value.split("\n").filter(Boolean);
-    keywords.conditional = document.getElementById("conditionalKeywords").value.split("\n").filter(Boolean);
-    keywords.contre = document.getElementById("contreKeywords").value.split("\n").filter(Boolean);
-
-    const text = await extractTextFromPDF(file);
-    const opinions = text.split(/[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/).filter(op => op.trim().length > 10);
-
-    let r = { pour: 0, conditional: 0, contre: 0, neutre: 0 };
-    opinions.forEach(o => r[classify(o)]++);
-
-    const total = opinions.length || 1; // éviter NaN
-    document.getElementById("count").innerText = opinions.length;
-
-    document.getElementById("pourResult").innerText = ((r.pour/total)*100).toFixed(1)+" %";
-    document.getElementById("conditionalResult").innerText = ((r.conditional/total)*100).toFixed(1)+" %";
-    document.getElementById("contreResult").innerText = ((r.contre/total)*100).toFixed(1)+" %";
-    document.getElementById("neutralResult").innerText = ((r.neutre/total)*100).toFixed(1)+" %";
-
-    if(chartInstance) chartInstance.destroy();
-    chartInstance = new Chart(document.getElementById("chart"), {
-        type: "pie",
-        data: {
-            labels: ["POUR", "POUR (conditions)", "CONTRE", "NEUTRE"],
-            datasets: [{ data: [r.pour, r.conditional, r.contre, r.neutre], backgroundColor: ["#4caf50","#2196f3","#f44336","#ff9800"] }]
-        }
-    });
-
-    document.getElementById("pdfInput").value = "";
-}
-
-/* =========================
-   RESET
-========================= */
-function resetKeywords() {
-    location.reload();
-}
-
-// 🚀 init
-loadKeywords();
+pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+let keywords={pour:[],cond:[],contre:[]};
+fetch('keywords.json').then(r=>r.json()).then(j=>{keywords=j;sync()});
+function sync(){pour.value=keywords.pour.join('\n');cond.value=keywords.cond.join('\n');contre.value=keywords.contre.join('\n');}
+function norm(t){return t.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();}
+async function extract(file){const pdf=await pdfjsLib.getDocument(await file.arrayBuffer()).promise;let txt='';for(let i=1;i<=pdf.numPages;i++){const p=await pdf.getPage(i);const c=await p.getTextContent();c.items.forEach(it=>txt+=it.str+' ');}return norm(txt)}
+function countMatches(t,list){return list.reduce((s,k)=>s+(t.includes(norm(k))?1:0),0)}
+function classify(t){const p=countMatches(t,keywords.pour);const c=countMatches(t,keywords.cond);const n=countMatches(t,keywords.contre);if(n>p&&n>0)return'contre';if(p>0&&c>0)return'cond';if(p>0)return'pour';return'neutre'}
+let chart;
+async function analyze(){keywords.pour=pour.value.split('\n').filter(Boolean);keywords.cond=cond.value.split('\n').filter(Boolean);keywords.contre=contre.value.split('\n').filter(Boolean);const file=pdfInput.files[0];if(!file)return;const text=await extract(file);const opinions=text.split(/@[a-z0-9.-]+/).filter(t=>t.length>20);let r={pour:0,cond:0,contre:0,neutre:0};opinions.forEach(o=>r[classify(o)]++);count.innerText=opinions.length;r_pour.innerText=r.pour;r_cond.innerText=r.cond;r_contre.innerText=r.contre;r_neutre.innerText=r.neutre;if(chart)chart.destroy();chart=new Chart(chart,{type:'pie',data:{labels:['POUR','COND','CONTRE','NEUTRE'],datasets:[{data:Object.values(r)}]}})}
 </script>
-
 </body>
 </html>
