@@ -57,13 +57,13 @@ function norm(t){return t.normalize('NFD').replace(/[\u0300-\u036f]/g,'').replac
 async function extract(file){const pdf=await pdfjsLib.getDocument(await file.arrayBuffer()).promise;let txt='';for(let i=1;i<=pdf.numPages;i++){const p=await pdf.getPage(i);const c=await p.getTextContent();c.items.forEach(it=>txt+=it.str+' ');}return norm(txt)}
 function countMatches(t,list){let score=0;list.forEach(k=>{const r=new RegExp('\\b'+norm(k)+'\\b','g');const m=t.match(r);if(m)score+=m.length});return score}
 function classify(t){const p=countMatches(t,keywords.pour);const c=countMatches(t,keywords.cond);const n=countMatches(t,keywords.contre);if(n>p&&n>0)return'contre';if(p>0&&c>0)return'cond';if(p>0)return'pour';return'neutre'}
-let chart;
+let chartInstance;
 async function analyze(){keywords.pour=pour.value.split('\n').filter(l=>l.trim().length>2);keywords.cond=cond.value.split('\n').filter(l=>l.trim().length>2);keywords.contre=contre.value.split('\n').filter(l=>l.trim().length>2);const file=pdfInput.files[0];if(!file)return;const text=await extract(file);
 // découpe robuste : une réponse commence après un email et se termine avant le suivant
 const parts=text.split(/\b[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}\b/).map(t=>t.trim()).filter(t=>t.length>25);
 let r={pour:0,cond:0,contre:0,neutre:0};parts.forEach(o=>r[classify(o)]++);
 count.innerText=parts.length;r_pour.innerText=r.pour;r_cond.innerText=r.cond;r_contre.innerText=r.contre;r_neutre.innerText=r.neutre;
-if(chart)chart.destroy();chart=new Chart(document.getElementById('chart'),{type:'pie',data:{labels:['POUR','CONDITIONNEL','CONTRE','NEUTRE'],datasets:[{data:[r.pour,r.cond,r.contre,r.neutre]}]}})}
+if(chartInstance) chartInstance.destroy();chartInstance=new Chart(document.getElementById('chart'),{type:'pie',data:{labels:['POUR','CONDITIONNEL','CONTRE','NEUTRE'],datasets:[{data:[r.pour,r.cond,r.contre,r.neutre],backgroundColor:['#16a34a','#2563eb','#dc2626','#f59e0b']}],options:{responsive:true,maintainAspectRatio:false}})}
 </script>
 </body>
 </html>
