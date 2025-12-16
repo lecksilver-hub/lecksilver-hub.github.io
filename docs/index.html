@@ -118,59 +118,18 @@
 ========================= */
 let keywords = {
     pour: [],
-    conditional: ["à condition", "sous condition", "mais", "si"],
+    conditional: ["a condition", "sous condition", "mais", "si"],
     contre: []
 };
-
-/* =========================
-   LOAD keyword.json
-========================= */
-async function loadKeywords() {
-    try {
-        const res = await fetch("keywords.json", { cache: "no-store" });
-        if (!res.ok) throw new Error("keywords.json introuvable");
-        const json = await res.json();
-
-        if (!Array.isArray(json.pour)) json.pour = [];
-        if (!Array.isArray(json.contre)) json.contre = [];
-
-        keywords.pour = json.pour;
-        keywords.contre = json.contre;
-
-        syncTextareas();
-        localStorage.setItem("keywords", JSON.stringify(keywords));
-        console.info("keyword.json chargé:", keywords);
-    } catch (err) {
-        console.warn("Impossible de charger keyword.json:", err);
-        const saved = localStorage.getItem("keywords");
-        if (saved) {
-            keywords = JSON.parse(saved);
-            syncTextareas();
-        } else {
-            console.warn("Aucun keyword.json trouvé, mots-clés vides");
-            syncTextareas();
-        }
-    }
-}
-
-/* =========================
-   UI SYNC
-========================= */
-function syncTextareas() {
-    document.getElementById("pourKeywords").value = keywords.pour.join("\n");
-    document.getElementById("conditionalKeywords").value = keywords.conditional.join("\n");
-    document.getElementById("contreKeywords").value = keywords.contre.join("\n");
-}
 
 /* =========================
    UTILS
 ========================= */
 function normalizeText(text) {
-    return text
-        .normalize("NFD")
-        .replace(/[\u0300-\u036f]/g, "")
-        .replace(/[’‘`]/g, "'")
-        .replace(/[^\w\s'-]/g, "")
+    return text.normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")  // accents
+        .replace(/[’‘`]/g, "'")           // apostrophes
+        .replace(/[^\w\s'-]/g, "")        // caractères spéciaux
         .toLowerCase();
 }
 
@@ -226,21 +185,29 @@ async function analyze() {
     const file = document.getElementById("pdfInput").files[0];
     if (!file) return alert("Sélectionne un PDF");
 
-    // synchro UI -> state
+    // synchroniser UI -> state
     keywords.pour = document.getElementById("pourKeywords").value.split("\n").filter(Boolean);
     keywords.conditional = document.getElementById("conditionalKeywords").value.split("\n").filter(Boolean);
     keywords.contre = document.getElementById("contreKeywords").value.split("\n").filter(Boolean);
-    localStorage.setItem("keywords", JSON.stringify(keywords));
 
     const text = await extractTextFromPDF(file);
-    const opinions = text.split(/[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/);
+
+    // Séparer les réponses par email
+    const blocks = text.split(/([a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,})/i);
+    let opinions = [];
+
+    for (let i = 0; i < blocks.length - 1; i += 2) {
+        const email = blocks[i+0].trim();
+        const response = blocks[i+1].trim();
+        if(email && response) opinions.push(response);
+    }
 
     let r = { pour: 0, conditional: 0, contre: 0, neutre: 0 };
     opinions.forEach(o => {
         if (o.trim().length > 10) r[classify(o)]++;
     });
 
-    const total = Object.values(r).reduce((a,b)=>a+b,0);
+    const total = opinions.length;
     document.getElementById("count").innerText = total;
 
     document.getElementById("pourResult").innerText = ((r.pour/total)*100).toFixed(1)+" %";
@@ -253,7 +220,10 @@ async function analyze() {
         type: "pie",
         data: {
             labels: ["POUR", "POUR (conditions)", "CONTRE", "NEUTRE"],
-            datasets: [{ data: [r.pour, r.conditional, r.contre, r.neutre], backgroundColor: ["#28a745","#007bff","#dc3545","#6c757d"] }]
+            datasets: [{ 
+                data: [r.pour, r.conditional, r.contre, r.neutre], 
+                backgroundColor: ["#28a745","#007bff","#dc3545","#6c757d"] 
+            }]
         }
     });
 
@@ -267,11 +237,7 @@ function resetKeywords() {
     localStorage.removeItem("keywords");
     location.reload();
 }
-
-// 🚀 init
-loadKeywords();
 </script>
 
 </body>
 </html>
-
