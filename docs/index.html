@@ -65,13 +65,9 @@ function countMatches(t,list){let score=0;list.forEach(k=>{const r=new RegExp('\
 function classify(t){const p=countMatches(t,keywords.pour);const c=countMatches(t,keywords.cond);const n=countMatches(t,keywords.contre);if(n>p&&n>0)return'contre';if(p>0&&c>0)return'cond';if(p>0)return'pour';return'neutre'}
 let chartInstance;
 async function analyze(){
-  keywords.pour = pour.value.split('
-').filter(l=>l.trim().length>2);
-  keywords.cond = cond.value.split('
-').filter(l=>l.trim().length>2);
-  keywords.contre = contre.value.split('
-').filter(l=>l.trim().length>2);
-
+  keywords.pour = pour.value.split('').filter(l=>l.trim().length>2);
+  keywords.cond = cond.value.split('').filter(l=>l.trim().length>2);
+  keywords.contre = contre.value.split('').filter(l=>l.trim().length>2);
   const file = pdfInput.files[0];
   if(!file) return;
 
@@ -119,4 +115,5 @@ async function analyze(){
 </script>
 </body>
 </html>
+
 
