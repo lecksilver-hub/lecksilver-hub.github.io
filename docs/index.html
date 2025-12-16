@@ -49,8 +49,6 @@
             margin-right: 10px;
         }
 
-        button:hover { background: #0056b3; }
-
         .results {
             display: flex;
             justify-content: space-around;
@@ -116,38 +114,55 @@
 
 <script>
 /* =========================
-   MOTS-CLÉS
+   KEYWORDS STATE
 ========================= */
-const defaultKeywords = {
-    pour: [
-        "je suis pour",
-        "totalement pour",
-        "favorable",
-        "tres favorable",
-        "bonne idee",
-        "excellente idee"
-    ],
+let keywords = {
+    pour: [],
     conditional: [
         "a condition",
         "sous condition",
         "mais",
         "si"
     ],
-    contre: [
-        "contre",
-        "mauvaise idee",
-        "jamais",
-        "honte",
-        "esclavage",
-        "inadmissible",
-        "regression"
-    ]
+    contre: []
 };
 
-let keywords = JSON.parse(localStorage.getItem("keywords")) || defaultKeywords;
-pourKeywords.value = keywords.pour.join("\n");
-conditionalKeywords.value = keywords.conditional.join("\n");
-contreKeywords.value = keywords.contre.join("\n");
+/* =========================
+   LOAD keyword.json
+========================= */
+async function loadKeywords() {
+    try {
+        const res = await fetch("keyword.json", { cache: "no-store" });
+        if (!res.ok) throw new Error("keyword.json introuvable");
+        const json = await res.json();
+
+        if (!json.pour || !json.contre) throw new Error("JSON invalide");
+
+        keywords.pour = json.pour;
+        keywords.contre = json.contre;
+
+        syncTextareas();
+        localStorage.setItem("keywords", JSON.stringify(keywords));
+        console.info("keyword.json chargé");
+    } catch {
+        const saved = localStorage.getItem("keywords");
+        if (saved) {
+            keywords = JSON.parse(saved);
+            syncTextareas();
+        } else {
+            console.warn("Aucun keyword.json trouvé, mots-clés vides");
+        }
+    }
+}
+
+/* =========================
+   UI SYNC
+========================= */
+function syncTextareas() {
+    pourKeywords.value = keywords.pour.join("\n");
+    conditionalKeywords.value = keywords.conditional.join("\n");
+    contreKeywords.value = keywords.contre.join("\n");
+}
 
 /* =========================
    UTILS
@@ -166,42 +181,36 @@ function normalizeText(text) {
 async function extractTextFromPDF(file) {
     const buffer = await file.arrayBuffer();
     const pdf = await pdfjsLib.getDocument({ data: buffer }).promise;
-
     let text = "";
+
     for (let i = 1; i <= pdf.numPages; i++) {
         const page = await pdf.getPage(i);
         const content = await page.getTextContent();
         content.items.forEach(item => text += item.str + " ");
     }
 
-    // 🔥 libération explicite
     pdf.cleanup();
     pdf.destroy();
-
     return normalizeText(text);
 }
 
 /* =========================
-   SCORING
+   SCORING & CLASSIFICATION
 ========================= */
-function scoreText(text, list) {
-    let score = 0;
+function score(text, list) {
+    let s = 0;
     list.forEach(k => {
-        const kw = normalizeText(k);
-        const regex = new RegExp(`\\b${kw}\\b`, "g");
-        const matches = text.match(regex);
-        if (matches) score += matches.length;
+        const r = new RegExp(`\\b${normalizeText(k)}\\b`, "g");
+        const m = text.match(r);
+        if (m) s += m.length;
     });
-    return score;
+    return s;
 }
 
-/* =========================
-   CLASSIFICATION
-========================= */
 function classify(text) {
-    const p = scoreText(text, keywords.pour);
-    const c = scoreText(text, keywords.conditional);
-    const n = scoreText(text, keywords.contre);
+    const p = score(text, keywords.pour);
+    const c = score(text, keywords.conditional);
+    const n = score(text, keywords.contre);
 
     if (n > 0 && n >= p) return "contre";
     if (p > 0 && c > 0) return "conditional";
@@ -215,45 +224,31 @@ function classify(text) {
 let chartInstance = null;
 
 async function analyze() {
-    const input = document.getElementById("pdfInput");
-    const file = input.files[0];
+    const file = pdfInput.files[0];
     if (!file) return alert("Sélectionne un PDF");
 
-    keywords = {
-        pour: pourKeywords.value.split("\n").map(normalizeText).filter(Boolean),
-        conditional: conditionalKeywords.value.split("\n").map(normalizeText).filter(Boolean),
-        contre: contreKeywords.value.split("\n").map(normalizeText).filter(Boolean)
-    };
+    // synchro UI -> state
+    keywords.pour = pourKeywords.value.split("\n").filter(Boolean);
+    keywords.conditional = conditionalKeywords.value.split("\n").filter(Boolean);
+    keywords.contre = contreKeywords.value.split("\n").filter(Boolean);
     localStorage.setItem("keywords", JSON.stringify(keywords));
 
     const text = await extractTextFromPDF(file);
     const opinions = text.split(/[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/);
 
-    let results = { pour: 0, conditional: 0, contre: 0, neutre: 0 };
-    opinions.forEach(op => {
-        if (op.trim().length > 10) {
-            results[classify(op)]++;
-        }
+    let r = { pour: 0, conditional: 0, contre: 0, neutre: 0 };
+    opinions.forEach(o => {
+        if (o.trim().length > 10) r[classify(o)]++;
     });
 
-    const total = Object.values(results).reduce((a,b)=>a+b,0);
+    const total = Object.values(r).reduce((a,b)=>a+b,0);
     count.innerText = total;
 
-    pourResult.innerText = ((results.pour/total)*100).toFixed(1)+" %";
-    conditionalResult.innerText = ((results.conditional/total)*100).toFixed(1)+" %";
-    contreResult.innerText = ((results.contre/total)*100).toFixed(1)+" %";
-    neutralResult.innerText = ((results.neutre/total)*100).toFixed(1)+" %";
+    pourResult.innerText = ((r.pour/total)*100).toFixed(1)+" %";
+    conditionalResult.innerText = ((r.conditional/total)*100).toFixed(1)+" %";
+    contreResult.innerText = ((r.contre/total)*100).toFixed(1)+" %";
+    neutralResult.innerText = ((r.neutre/total)*100).toFixed(1)+" %";
 
-    renderChart(results);
-
-    // 🧹 NETTOYAGE FINAL
-    input.value = "";           // supprime le fichier sélectionné
-}
-
-/* =========================
-   CHART
-========================= */
-function renderChart(r) {
     if (chartInstance) chartInstance.destroy();
     chartInstance = new Chart(chart, {
         type: "pie",
@@ -262,10 +257,21 @@ function renderChart(r) {
             datasets: [{ data: [r.pour, r.conditional, r.contre, r.neutre] }]
         }
     });
+
+    pdfInput.value = "";
 }
 
 /* =========================
    RESET
 ========================= */
 function resetKeywords() {
-    localStora
+    localStorage.removeItem("keywords");
+    location.reload();
+}
+
+// 🚀 init
+loadKeywords();
+</script>
+
+</body>
+</html>
