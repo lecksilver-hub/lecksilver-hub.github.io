@@ -59,9 +59,12 @@ function countMatches(t,list){let score=0;list.forEach(k=>{const r=new RegExp('\
 function classify(t){const p=countMatches(t,keywords.pour);const c=countMatches(t,keywords.cond);const n=countMatches(t,keywords.contre);if(n>p&&n>0)return'contre';if(p>0&&c>0)return'cond';if(p>0)return'pour';return'neutre'}
 let chartInstance;
 async function analyze(){
-  keywords.pour = pour.value.split('\n').filter(l=>l.trim().length>2);
-  keywords.cond = cond.value.split('\n').filter(l=>l.trim().length>2);
-  keywords.contre = contre.value.split('\n').filter(l=>l.trim().length>2);
+  keywords.pour = pour.value.split('
+').filter(l=>l.trim().length>2);
+  keywords.cond = cond.value.split('
+').filter(l=>l.trim().length>2);
+  keywords.contre = contre.value.split('
+').filter(l=>l.trim().length>2);
 
   const file = pdfInput.files[0];
   if(!file) return;
@@ -69,7 +72,7 @@ async function analyze(){
   const text = await extract(file);
 
   // ⚠️ découpe CORRIGÉE : on garde chaque réponse complète
-  const emailRegex = /\b[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}\b/gi;
+  const emailRegex = /[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/gi;
   const emails = [...text.matchAll(emailRegex)];
 
   let parts = [];
@@ -99,7 +102,12 @@ async function analyze(){
         backgroundColor:['#16a34a','#2563eb','#dc2626','#f59e0b']
       }]
     },
-    options:{responsive:true}
+    options:{
+      responsive:true,
+      plugins:{
+        legend:{position:'bottom'}
+      }
+    }
   });
 }
 </script>
