@@ -3,29 +3,30 @@
     "je suis pour",
     "pour",
     "favorable",
-    "bonne idée",
+    "bonne idÃ©e",
     "excellente",
-    "très bonne",
+    "trÃ¨s bonne",
     "oui",
     "d'accord",
     "totalement pour",
     "100% pour",
-    "nécessaire",
+    "nÃ©cessaire",
     "souhaitable",
     "bonne chose",
-    "très favorable"
+    "trÃ¨s favorable"
   ],
   "contre": [
     "contre",
-    "mauvaise idée",
+    "mauvaise idÃ©e",
     "jamais",
     "honte",
     "esclavage",
     "lamentable",
     "inadmissible",
-    "régression",
+    "rÃ©gression",
     "pas d'accord",
     "folie",
     "erreur"
   ]
 }
+
