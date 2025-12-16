@@ -1,0 +1,31 @@
+{
+  "pour": [
+    "je suis pour",
+    "pour",
+    "favorable",
+    "bonne idée",
+    "excellente",
+    "très bonne",
+    "oui",
+    "d'accord",
+    "totalement pour",
+    "100% pour",
+    "nécessaire",
+    "souhaitable",
+    "bonne chose",
+    "très favorable"
+  ],
+  "contre": [
+    "contre",
+    "mauvaise idée",
+    "jamais",
+    "honte",
+    "esclavage",
+    "lamentable",
+    "inadmissible",
+    "régression",
+    "pas d'accord",
+    "folie",
+    "erreur"
+  ]
+}

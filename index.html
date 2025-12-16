@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>Analyseur de sondage PDF</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <script>
+        pdfjsLib.GlobalWorkerOptions.workerSrc =
+            'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    </script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background: #f4f6f8;
+            margin: 0;
+            padding: 40px;
+        }
+
+        h1 {
+            text-align: center;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: auto;
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 4px 12px rgba(0,0,0,.1);
+        }
+
+        .block {
+            margin-bottom: 30px;
+        }
+
+        textarea {
+            width: 100%;
+            height: 120px;
+            padding: 10px;
+            font-size: 14px;
+        }
+
+        input[type="file"] {
+            margin-top: 10px;
+        }
+
+        button {
+            background: #007bff;
+            color: white;
+            padding: 10px 18px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+
+            button:hover {
+                background: #0056b3;
+            }
+
+        .results {
+            display: flex;
+            justify-content: space-around;
+            margin-top: 30px;
+            text-align: center;
+        }
+
+        .card {
+            background: #f1f3f5;
+            padding: 20px;
+            border-radius: 8px;
+            width: 28%;
+        }
+
+            .card h2 {
+                margin: 0;
+            }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Analyse de sondage – Maisons closes</h1>
+
+        <div class="block">
+            <h3>1️⃣ Importer le fichier PDF</h3>
+            <input type="file" id="pdfInput" accept="application/pdf" />
+        </div>
+
+        <div class="block">
+            <h3>2️⃣ Mots-clés POUR</h3>
+            <textarea id="pourKeywords" oninput="saveKeywords()"></textarea>
+        </div>
+
+        <div class="block">
+            <h3>3️⃣ Mots-clés CONTRE</h3>
+            <textarea id="contreKeywords" oninput="saveKeywords()"></textarea>
+        </div>
+
+        <div class="block">
+            <button onclick="analyze()">📊 Lancer l’analyse</button>
+        </div>
+
+        <div class="results">
+            <div class="card">
+                <h2>✅ POUR</h2>
+                <p id="pourResult">0 %</p>
+            </div>
+            <div class="card">
+                <h2>❌ CONTRE</h2>
+                <p id="contreResult">0 %</p>
+            </div>
+            <div class="card">
+                <h2>⚖️ NEUTRE</h2>
+                <p id="neutralResult">0 %</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let keywords = { pour: [], contre: [] };
+
+        // === Charger JSON ===
+        fetch("keywords.json")
+            .then(res => res.json())
+            .then(data => {
+                keywords = data;
+                document.getElementById("pourKeywords").value = keywords.pour.join("\n");
+                document.getElementById("contreKeywords").value = keywords.contre.join("\n");
+
+                // Si localStorage contient des modifications
+                const saved = localStorage.getItem("keywords");
+                if (saved) {
+                    const local = JSON.parse(saved);
+                    if (local.pour) document.getElementById("pourKeywords").value = local.pour;
+                    if (local.contre) document.getElementById("contreKeywords").value = local.contre;
+                }
+            });
+
+        // === Persistance ===
+        function saveKeywords() {
+            localStorage.setItem("keywords", JSON.stringify({
+                pour: document.getElementById("pourKeywords").value,
+                contre: document.getElementById("contreKeywords").value
+            }));
+        }
+
+        // === Extraction PDF ===
+        async function extractTextFromPDF(file) {
+            const buffer = await file.arrayBuffer();
+            const pdf = await pdfjsLib.getDocument({ data: buffer }).promise;
+            let text = "";
+            for (let i = 1; i <= pdf.numPages; i++) {
+                const page = await pdf.getPage(i);
+                const content = await page.getTextContent();
+                content.items.forEach(item => text += item.str + " ");
+            }
+            return text.toLowerCase();
+        }
+
+        // === Score pondéré ===
+        function scoreText(text, keywords) {
+            let score = 0;
+            keywords.forEach(k => {
+                if (!k) return;
+                const kw = k.trim();
+                if (!kw) return;
+                const exact = new RegExp(`\\b${kw}\\b`, "gi");
+                const exactMatches = text.match(exact);
+                if (exactMatches) score += exactMatches.length * 2;
+                if (text.includes(kw)) score += 1;
+            });
+            return score;
+        }
+
+        function classify(text, pour, contre) {
+            const scorePour = scoreText(text, pour);
+            const scoreContre = scoreText(text, contre);
+            if (scorePour > scoreContre) return "pour";
+            if (scoreContre > scorePour) return "contre";
+            return "neutre";
+        }
+
+        // === Analyse ===
+        async function analyze() {
+            const file = document.getElementById("pdfInput").files[0];
+            if (!file) return alert("Veuillez sélectionner un PDF");
+
+            const pour = document.getElementById("pourKeywords").value.toLowerCase().split("\n").filter(Boolean);
+            const contre = document.getElementById("contreKeywords").value.toLowerCase().split("\n").filter(Boolean);
+
+            const text = await extractTextFromPDF(file);
+            const opinions = text.split(/[.!?]\s+/);
+
+            let results = { pour: 0, contre: 0, neutre: 0 };
+            opinions.forEach(op => {
+                if (op.length > 40) {
+                    const cat = classify(op, pour, contre);
+                    results[cat]++;
+                }
+            });
+
+            const total = results.pour + results.contre + results.neutre;
+            if (total === 0) return alert("Aucune opinion détectée");
+
+            document.getElementById("pourResult").innerText = ((results.pour / total) * 100).toFixed(1) + " %";
+            document.getElementById("contreResult").innerText = ((results.contre / total) * 100).toFixed(1) + " %";
+            document.getElementById("neutralResult").innerText = ((results.neutre / total) * 100).toFixed(1) + " %";
+        }
+    </script>
+</body>
+</html>
